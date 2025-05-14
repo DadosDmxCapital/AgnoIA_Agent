@@ -1,0 +1,8 @@
+python-dotenv==1.0.0
+requests==2.31.0
+groq==0.4.1
+colorama==0.4.6
+psycopg2-binary==2.9.9
+streamlit==1.32.0
+pandas==2.1.4
+plotly==5.18.0
