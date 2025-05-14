@@ -940,7 +940,7 @@ def main():
             <p>Utilize linguagem natural para fazer suas consultas, sem necessidade
             de conhecimento técnico em banco de dados.</p>
 
-            <p>Powered by <strong>Google Gemini</strong> 🧠</p>
+            <p>Powered by <strong>Groq</strong> 🧠</p>
 
             <div class="version-info">Versão 1.0</div>
         </div>

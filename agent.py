@@ -7,7 +7,7 @@ import time
 from typing import Dict, Any, List, Optional, Callable
 
 import config
-from tools import GeminiTool, PostgresTool
+from tools import GroqTool, PostgresTool
 
 class AgnoAgent:
     """
@@ -31,8 +31,8 @@ class AgnoAgent:
 
     def _initialize_default_tools(self):
         """Initialize the default set of tools."""
-        # Add Gemini as a default tool
-        self.add_tool("gemini", GeminiTool())
+        # Add Groq as a default tool
+        self.add_tool("groq", GroqTool())
 
         # Add PostgreSQL as a default tool
         self.add_tool("postgres", PostgresTool())
@@ -259,7 +259,7 @@ class AgnoAgent:
         Process a natural language query about the database.
 
         This function takes a query in natural language (like "Quantos títulos em aberto possui o cedente X?"),
-        interprets it using the Gemini LLM, converts it to SQL, and returns the results.
+        interprets it using the Groq LLM, converts it to SQL, and returns the results.
 
         Args:
             query: Natural language query about the database
@@ -267,8 +267,8 @@ class AgnoAgent:
         Returns:
             Response with the query results
         """
-        if "gemini" not in self.tools:
-            return "Erro: Ferramenta Gemini não disponível. Necessária para processar consultas em linguagem natural."
+        if "groq" not in self.tools:
+            return "Erro: Ferramenta Groq não disponível. Necessária para processar consultas em linguagem natural."
 
         if "postgres" not in self.tools:
             return "Erro: Ferramenta PostgreSQL não disponível. Necessária para executar consultas ao banco de dados."
@@ -290,6 +290,16 @@ class AgnoAgent:
         ESQUEMA DA TABELA fato_titulosabertos:
         {fato_titulosabertos_schema}
 
+        REGRAS SEMÂNTICAS IMPORTANTES:
+
+        1. Sempre que for solicitada a "soma dos valores da operação", use o campo `valor_bruto` da tabela `fato_operacoes`.
+        2. A coluna `desagio` representa o desconto aplicado ao valor da operação ou título.
+        3. A coluna `situacao` da tabela de títulos representa o status atual (ex: em aberto, pago, vencido).
+        4. O "operador" é o responsável pela carteira de operações, enquanto o "gerente" é o comercial responsável por um grupo de cedentes.
+        5. Todos os campos que começam com `valor_` referem-se a valores financeiros.
+        6. `sacado` é quem deve pagar o título, ou seja, o cliente do cedente.
+        7. `cedente` é quem detém o título ou a operação (quem vende o título ou crédito).
+
         EXEMPLOS DE CONVERSÃO:
 
         Pergunta: "Quantos títulos em aberto existem no total?"
@@ -307,6 +317,15 @@ class AgnoAgent:
         Pergunta: "Quantas operações foram realizadas no último mês?"
         SQL: SELECT COUNT(*) as total FROM fato_operacoes WHERE data >= CURRENT_DATE - INTERVAL '1 month'
 
+        Pergunta: "Qual o valor total das operações por cedente nos últimos 30 dias?"
+        SQL: SELECT cedente, SUM(valor_bruto) as valor_total FROM fato_operacoes WHERE data >= CURRENT_DATE - INTERVAL '30 days' GROUP BY cedente ORDER BY valor_total DESC
+
+        Pergunta: "Me mostre o deságio médio por operador."
+        SQL: SELECT operador, AVG(valor_desagio) as desagio_medio FROM fato_operacoes GROUP BY operador ORDER BY desagio_medio DESC
+
+        Pergunta: "Quais sacados têm mais de 3 títulos vencidos?"
+        SQL: SELECT sacado, COUNT(*) as total_titulos FROM fato_titulosabertos WHERE vencimento < CURRENT_DATE GROUP BY sacado HAVING COUNT(*) > 3 ORDER BY total_titulos DESC
+
         INSTRUÇÕES:
         1. Analise a pergunta em linguagem natural
         2. Identifique as tabelas relevantes (fato_operacoes ou fato_titulosabertos)
@@ -314,14 +333,15 @@ class AgnoAgent:
         4. Não inclua comentários ou texto adicional, apenas a consulta SQL
         5. Use aspas simples para strings
         6. Certifique-se de que a consulta seja válida para PostgreSQL
+        7. Aplique as regras semânticas descritas acima para escolher as colunas corretas
 
         Agora, converta a seguinte pergunta em uma consulta SQL:
         """
 
-        gemini_tool = self.tools["gemini"]
+        groq_tool = self.tools["groq"]
 
         # Generate SQL query from natural language
-        sql_query = gemini_tool.generate_text(
+        sql_query = groq_tool.generate_text(
             prompt=query,
             system_prompt=system_prompt,
             max_tokens=500,
@@ -346,7 +366,7 @@ class AgnoAgent:
         result = self.query_database(sql_query)
 
         # Generate a human-friendly response
-        response_system_prompt = f"""Você é {self.name}, um assistente de IA especializado em explicar resultados de consultas de banco de dados.
+        response_system_prompt = f"""Você é {self.name}, um assistente de dados inteligente especializado em interpretar dados financeiros de operações e títulos.
 
         A pergunta original do usuário foi: "{query}"
 
@@ -355,12 +375,32 @@ class AgnoAgent:
         Os resultados da consulta são:
         {result}
 
-        Por favor, explique esses resultados de maneira clara e concisa em português, como se estivesse falando com alguém que não entende SQL.
-        Seja direto e objetivo, respondendo exatamente o que foi perguntado.
+        REGRAS SEMÂNTICAS IMPORTANTES:
+
+        1. Sempre que for mencionado "valor da operação", refere-se ao campo `valor_bruto` da tabela `fato_operacoes`.
+        2. O "deságio" representa o desconto aplicado ao valor da operação ou título.
+        3. O "operador" é o responsável pela carteira de operações, enquanto o "gerente" é o comercial responsável por um grupo de cedentes.
+        4. O "sacado" é quem deve pagar o título, ou seja, o cliente do cedente.
+        5. O "cedente" é quem detém o título ou a operação (quem vende o título ou crédito).
+
+        INSTRUÇÕES:
+        1. Explique os resultados da consulta de forma clara e objetiva
+        2. Use linguagem simples e acessível
+        3. Forneça insights relevantes sobre os dados, incluindo tendências, anomalias ou padrões
+        4. Responda em português
+        5. Seja conciso e direto
+        6. Não mencione a consulta SQL, apenas explique os resultados
+        7. Se houver muitos resultados, resuma as informações mais importantes
+        8. Se aplicável, mencione totais, médias, valores máximos/mínimos
+        9. Formate valores monetários com R$ e separadores de milhar (ex: R$ 1.234,56)
+        10. Formate datas no padrão brasileiro (DD/MM/AAAA)
+        11. Contextualize os resultados em termos de operações financeiras
+        12. Sugira possíveis ações ou análises adicionais com base nos resultados
+        13. Se relevante, compare os resultados com médias ou valores esperados
         """
 
         # Generate the response
-        friendly_response = gemini_tool.generate_text(
+        friendly_response = groq_tool.generate_text(
             prompt="Por favor, explique os resultados da consulta de forma amigável.",
             system_prompt=response_system_prompt,
             max_tokens=config.MAX_OUTPUT_TOKENS,
@@ -431,46 +471,85 @@ class AgnoAgent:
             # This looks like a natural language query about the database
             response = self.process_natural_language_query(query)
         else:
-            # Use Gemini to generate a response
-            if "gemini" in self.tools:
-                gemini_tool = self.tools["gemini"]
+            # Use Groq to generate a response
+            if "groq" in self.tools:
+                groq_tool = self.tools["groq"]
 
                 # Create a system prompt if none provided
                 if system_prompt is None:
-                    system_prompt = f"""Você é {self.name}, um assistente de IA especializado em operações financeiras.
-                    Você é prestativo, inofensivo e honesto.
-                    Responda às perguntas do usuário da melhor maneira possível.
+                    system_prompt = f"""Você é {self.name}, um assistente de dados inteligente especializado em interpretar dados financeiros de operações e títulos em um banco de dados relacional. Seu trabalho é responder perguntas com base em duas tabelas principais: `fato_operacoes` e `fato_titulosabertos`.
 
-                    Você pode executar consultas SQL em um banco de dados PostgreSQL.
-                    O banco de dados contém informações sobre operações financeiras e títulos em aberto.
+### Estrutura das Tabelas
 
-                    Comandos especiais:
-                    - 'SQL: <consulta>' para executar uma consulta SQL personalizada
-                    - 'listar tabelas' para listar todas as tabelas no banco de dados
-                    - 'descrever tabela <nome>' para descrever a estrutura de uma tabela
-                    - 'operacoes [limite]' para listar operações da tabela fato_operacoes
-                    - 'titulos [limite]' para listar títulos em aberto da tabela fato_titulosabertos
-                    - 'contar operacoes' para contar o total de registros na tabela fato_operacoes
-                    - 'contar titulos' para contar o total de títulos em aberto
-                    - 'contar registros titulos' para contar o total de registros na tabela fato_titulosabertos
+1. **Tabela: fato_operacoes**
 
-                    Tabelas principais:
-                    - fato_operacoes: Contém informações sobre operações financeiras
-                    - fato_titulosabertos: Contém informações sobre títulos em aberto
+Contém registros de operações financeiras entre cedentes e sacados. As colunas são:
 
-                    Você também pode responder a perguntas em linguagem natural sobre o banco de dados,
-                    como "Quantos títulos em aberto possui o cedente X?" ou "Qual o valor total dos títulos em aberto?".
+- `empresa`: Empresa à qual a operação está vinculada.
+- `cedente`: Detentor da operação (quem vende o título ou crédito).
+- `etapa`: Fase atual da operação.
+- `cpf_cnpj_cedente`: Documento do cedente.
+- `prazo_medio`: Tempo médio das operações.
+- `valor_bruto`: Valor total bruto da operação (valor base que deve ser considerado ao se referir a "valor da operação").
+- `valor_desagio`: Valor descontado do bruto (perda do cedente).
+- `valor_liquido`: Valor efetivamente recebido.
+- `valor_recompra_pendencia`: Pendências em recompra.
+- `cred_cedente`: Crédito do cedente.
+- `valor_pagto_operacao`: Pagamentos realizados na operação.
+- `valor_saldo`: Saldo restante da operação.
+- `operacao`: Identificador da operação.
+- `"data"`: Data da operação.
+- `operador`: Responsável por cuidar daquela carteira.
+- `captador`: Quem originou o negócio.
+- `pagamento_operacao`: Tipo ou status do pagamento.
+- `conta_pagto`: Conta usada no pagamento.
+- `indice_operacao`: Índice financeiro da operação.
 
-                    Responda sempre em português, de forma clara e objetiva, como um especialista em operações financeiras."""
+2. **Tabela: fato_titulosabertos**
 
-                response = gemini_tool.generate_text(
+Contém títulos financeiros em aberto. As colunas são:
+
+- `empresa`: Empresa relacionada ao título.
+- `cedente`: Quem detém o título.
+- `sacado`: Cliente do cedente (quem paga).
+- `cpf_cnpj_cedente`: Documento do cedente.
+- `cpf_cnpj_sacado`: Documento do sacado.
+- `id_titulo`: Identificador do título (número único).
+- `vencimento`: Data de vencimento do título.
+- `data_emissao`: Data de emissão.
+- `documento`, `nosso_numero`, `op`, `conf`, `conta`, `m`, `cr`, `original`: Campos auxiliares ou operacionais.
+- `valor`, `valor_juros`, `valor_multa`, `valor_tarifas`, `valor_total`, `desagio`: Todos esses campos representam valores financeiros.
+- `motivo`, `situacao`, `etapa`, `historico`, `tipo`: Informações qualitativas sobre o título.
+
+### Regras e Semântica
+
+- Sempre que for solicitada a **"soma dos valores da operação"**, use o campo `valor_bruto` da tabela `fato_operacoes`.
+- A **coluna `desagio`** representa o desconto aplicado ao valor da operação ou título.
+- A **coluna `situacao`** da tabela de títulos representa o status atual (ex: em aberto, pago, vencido).
+- O **"operador"** é o responsável pela carteira de operações, enquanto o **"gerente"** (não representado diretamente, mas vinculado ao cedente) é o comercial responsável por um grupo de cedentes.
+- Todos os campos que começam com `valor_` referem-se a valores financeiros.
+- **`sacado`** é quem deve pagar o título, ou seja, o cliente do cedente.
+
+### Comandos especiais:
+- 'SQL: <consulta>' para executar uma consulta SQL personalizada
+- 'listar tabelas' para listar todas as tabelas no banco de dados
+- 'descrever tabela <nome>' para descrever a estrutura de uma tabela
+- 'operacoes [limite]' para listar operações da tabela fato_operacoes
+- 'titulos [limite]' para listar títulos em aberto da tabela fato_titulosabertos
+- 'contar operacoes' para contar o total de registros na tabela fato_operacoes
+- 'contar titulos' para contar o total de títulos em aberto
+- 'contar registros titulos' para contar o total de registros na tabela fato_titulosabertos
+
+Responda sempre em português, de forma clara e objetiva, como um especialista em operações financeiras. Forneça insights contextualizados e relevantes para o usuário."""
+
+                response = groq_tool.generate_text(
                     prompt=query,
                     system_prompt=system_prompt,
                     max_tokens=config.MAX_OUTPUT_TOKENS,
                     temperature=0.7
                 )
             else:
-                response = "Erro: Ferramenta Gemini não disponível. Por favor, adicione-a usando add_tool('gemini', GeminiTool())."
+                response = "Erro: Ferramenta Groq não disponível. Por favor, adicione-a usando add_tool('groq', GroqTool())."
 
         # Add response to conversation history
         self.conversation_history.append({"role": "assistant", "content": response})

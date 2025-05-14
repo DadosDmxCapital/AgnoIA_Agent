@@ -22,17 +22,7 @@ except ImportError:
                     os.environ[key] = value
                     print(f"Manually loaded {key} from .env file")
 
-# Gemini API configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    print("GEMINI_API_KEY not found in environment variables")
-    print("Please set GEMINI_API_KEY in your .env file")
-    GEMINI_API_KEY = ""  # Empty string as fallback
-
-# Default model to use with Gemini
-DEFAULT_GEMINI_MODEL = "gemini-1.5-pro"
-
-# Groq API configuration (kept for backward compatibility)
+# Groq API configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     print("GROQ_API_KEY not found in environment variables")
@@ -41,6 +31,16 @@ if not GROQ_API_KEY:
 
 # Default model to use with Groq
 DEFAULT_GROQ_MODEL = "llama3-70b-8192"
+
+# Gemini API configuration (kept for backward compatibility)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    print("GEMINI_API_KEY not found in environment variables")
+    print("Please set GEMINI_API_KEY in your .env file")
+    GEMINI_API_KEY = ""  # Empty string as fallback
+
+# Default model to use with Gemini
+DEFAULT_GEMINI_MODEL = "gemini-1.5-pro"
 
 # PostgreSQL configuration
 POSTGRES_USER = os.getenv("POSTGRES_USER")
