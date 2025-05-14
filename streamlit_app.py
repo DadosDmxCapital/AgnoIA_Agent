@@ -852,7 +852,7 @@ def main():
         st.markdown("""
         <div class="info-box">
             <div class="info-box-title">Assistente Financeiro</div>
-            <p>Olá! Sou o Agno IA, seu assistente especializado em operações financeiras.</p>
+            <p>Olá! Sou  a Hyance IA, seu assistente especializado em operações financeiras.</p>
             <p>Posso ajudar com consultas sobre títulos em aberto, operações financeiras e muito mais, usando linguagem natural.</p>
             <p><strong>Experimente perguntar:</strong> "Quantos títulos em aberto temos?" ou "Qual o valor total dos títulos do cedente X?"</p>
         </div>

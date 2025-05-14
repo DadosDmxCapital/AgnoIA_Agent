@@ -85,3 +85,9 @@ exports/
 Thumbs.db
 .DS_Store
 desktop.ini
+
+#tirando venv
+venv/
+
+#pycache
+__pycache__/
