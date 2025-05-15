@@ -295,7 +295,7 @@ class PostgresTool:
             - result: List with count result if successful, error message otherwise
         """
         # Validate table name to prevent SQL injection
-        valid_tables = ["fato_operacoes", "fato_titulosabertos"]
+        valid_tables = ["fato_operacoes", "fato_titulosabertos", "dimcedentesconsolidado"]
         if table_name not in valid_tables:
             return False, f"Tabela inválida. Tabelas válidas: {', '.join(valid_tables)}"
 
@@ -338,6 +338,33 @@ class PostgresTool:
             """
             SELECT CAST(COUNT(*) AS bigint) as total_titulos_abertos
             FROM public.fato_titulosabertos
+            """
+        )
+
+    def get_cedentes_info(self, limit: int = 10) -> Tuple[bool, Union[List[Dict[str, Any]], str]]:
+        """
+        Get cedentes information from dimcedentesconsolidado table.
+
+        Args:
+            limit: Maximum number of rows to return
+
+        Returns:
+            Tuple of (success, result)
+            - success: True if query was successful, False otherwise
+            - result: List of cedentes information if successful, error message otherwise
+        """
+        return self.execute_query(
+            f"""
+            SELECT nome, cpf_cnpj, endereco, cep, cidade, uf, email, telefone,
+                   gerente, operador, captador, controlador, fator_percentual,
+                   advalorem_percentual, data_cadastro, fonte_captacao, setor,
+                   grupo_economico, primeira_operacao, limite_global,
+                   limite_boleto_especial, limite_comissaria, limite_tranche,
+                   limite_boleto_especial_tranche, limite_boleto_garantido,
+                   limite_operacao_clean, risco_atual, saldo, id_cedente
+            FROM public.dimcedentesconsolidado
+            ORDER BY nome
+            LIMIT {limit}
             """
         )
 

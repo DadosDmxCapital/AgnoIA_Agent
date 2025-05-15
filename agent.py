@@ -254,6 +254,32 @@ class AgnoAgent:
         else:
             return "Erro: Ferramenta PostgreSQL não disponível."
 
+    def get_cedentes_info(self, limit: int = 10) -> str:
+        """
+        Get cedentes information from dimcedentesconsolidado table.
+
+        Args:
+            limit: Maximum number of rows to return
+
+        Returns:
+            Formatted results as a string
+        """
+        if "postgres" in self.tools:
+            postgres_tool = self.tools["postgres"]
+
+            # Get cedentes information
+            success, result = postgres_tool.get_cedentes_info(limit)
+
+            if success:
+                if result:
+                    return postgres_tool.format_results_as_markdown(result)
+                else:
+                    return "Nenhuma informação de cedente encontrada."
+            else:
+                return f"Erro ao buscar informações de cedentes: {result}"
+        else:
+            return "Erro: Ferramenta PostgreSQL não disponível."
+
     def process_natural_language_query(self, query: str) -> str:
         """
         Process a natural language query about the database.
@@ -277,6 +303,7 @@ class AgnoAgent:
         tables_info = self.list_database_tables()
         fato_operacoes_schema = self.describe_database_table("fato_operacoes")
         fato_titulosabertos_schema = self.describe_database_table("fato_titulosabertos")
+        dimcedentesconsolidado_schema = self.describe_database_table("dimcedentesconsolidado")
 
         # Create a system prompt with database information
         system_prompt = f"""Você é um especialista em SQL que converte perguntas em linguagem natural para consultas SQL.
@@ -290,6 +317,9 @@ class AgnoAgent:
         ESQUEMA DA TABELA fato_titulosabertos:
         {fato_titulosabertos_schema}
 
+        ESQUEMA DA TABELA dimcedentesconsolidado:
+        {dimcedentesconsolidado_schema}
+
         REGRAS SEMÂNTICAS IMPORTANTES:
 
         1. Sempre que for solicitada a "soma dos valores da operação", use o campo `valor_bruto` da tabela `fato_operacoes`.
@@ -299,6 +329,7 @@ class AgnoAgent:
         5. Todos os campos que começam com `valor_` referem-se a valores financeiros.
         6. `sacado` é quem deve pagar o título, ou seja, o cliente do cedente.
         7. `cedente` é quem detém o título ou a operação (quem vende o título ou crédito).
+        8. A tabela `dimcedentesconsolidado` contém dados cadastrais dos cedentes, como nome, endereço, contatos e limites de crédito.
 
         EXEMPLOS DE CONVERSÃO:
 
@@ -326,9 +357,18 @@ class AgnoAgent:
         Pergunta: "Quais sacados têm mais de 3 títulos vencidos?"
         SQL: SELECT sacado, COUNT(*) as total_titulos FROM fato_titulosabertos WHERE vencimento < CURRENT_DATE GROUP BY sacado HAVING COUNT(*) > 3 ORDER BY total_titulos DESC
 
+        Pergunta: "Quais são os cedentes do estado de São Paulo?"
+        SQL: SELECT nome, cidade, telefone, email FROM dimcedentesconsolidado WHERE uf = 'SP'
+
+        Pergunta: "Quais cedentes têm limite global acima de 100 mil?"
+        SQL: SELECT nome, limite_global FROM dimcedentesconsolidado WHERE limite_global > 100000 ORDER BY limite_global DESC
+
+        Pergunta: "Quais cedentes são gerenciados pelo gerente João Silva?"
+        SQL: SELECT nome, telefone, email FROM dimcedentesconsolidado WHERE gerente = 'João Silva'
+
         INSTRUÇÕES:
         1. Analise a pergunta em linguagem natural
-        2. Identifique as tabelas relevantes (fato_operacoes ou fato_titulosabertos)
+        2. Identifique as tabelas relevantes (fato_operacoes, fato_titulosabertos ou dimcedentesconsolidado)
         3. Gere APENAS a consulta SQL correspondente, sem explicações adicionais
         4. Não inclua comentários ou texto adicional, apenas a consulta SQL
         5. Use aspas simples para strings
@@ -462,6 +502,17 @@ class AgnoAgent:
             response = self.count_titulos_abertos()
         elif query.lower() == "contar registros titulos":
             response = self.count_table_records("fato_titulosabertos")
+        elif query.lower() == "cedentes" or query.lower() == "listar cedentes":
+            response = self.get_cedentes_info()
+        elif query.lower().startswith("cedentes "):
+            # Extract the limit
+            try:
+                limit = int(query.split(" ")[1])
+                response = self.get_cedentes_info(limit)
+            except (ValueError, IndexError):
+                response = "Por favor, forneça um número válido. Exemplo: 'cedentes 20'"
+        elif query.lower() == "contar cedentes":
+            response = self.count_table_records("dimcedentesconsolidado")
         # Detect natural language queries about the database
         elif any(keyword in query.lower() for keyword in [
             "quantos", "quais", "qual", "quanto", "lista", "mostre", "exiba", "cedente",
@@ -477,7 +528,7 @@ class AgnoAgent:
 
                 # Create a system prompt if none provided
                 if system_prompt is None:
-                    system_prompt = f"""Você é {self.name}, um assistente de dados inteligente especializado em interpretar dados financeiros de operações e títulos em um banco de dados relacional. Seu trabalho é responder perguntas com base em duas tabelas principais: `fato_operacoes` e `fato_titulosabertos`.
+                    system_prompt = f"""Você é {self.name}, um assistente de dados inteligente especializado em interpretar dados financeiros de operações e títulos em um banco de dados relacional. Seu trabalho é responder perguntas com base em três tabelas principais: `fato_operacoes`, `fato_titulosabertos` e `dimcedentesconsolidado`.
 
 ### Estrutura das Tabelas
 
@@ -521,6 +572,35 @@ Contém títulos financeiros em aberto. As colunas são:
 - `valor`, `valor_juros`, `valor_multa`, `valor_tarifas`, `valor_total`, `desagio`: Todos esses campos representam valores financeiros.
 - `motivo`, `situacao`, `etapa`, `historico`, `tipo`: Informações qualitativas sobre o título.
 
+3. **Tabela: dimcedentesconsolidado**
+
+Contém dados cadastrais dos cedentes. As colunas são:
+
+- `nome`: Nome do cedente.
+- `cpf_cnpj`: CPF ou CNPJ do cedente.
+- `endereco`: Endereço do cedente.
+- `cep`: CEP do endereço do cedente.
+- `cidade`: Cidade do cedente.
+- `uf`: Estado (UF) do cedente.
+- `email`: Email de contato do cedente.
+- `telefone`: Telefone de contato do cedente.
+- `gerente`: Gerente responsável pelo cedente.
+- `operador`: Operador responsável pela carteira do cedente.
+- `captador`: Quem originou o relacionamento com o cedente.
+- `controlador`: Responsável pelo controle da carteira.
+- `fator_percentual`: Percentual do fator aplicado nas operações.
+- `advalorem_percentual`: Percentual de ad valorem aplicado.
+- `data_cadastro`: Data de cadastro do cedente.
+- `fonte_captacao`: Como o cedente foi captado.
+- `setor`: Setor de atuação do cedente.
+- `grupo_economico`: Grupo econômico ao qual o cedente pertence.
+- `primeira_operacao`: Data da primeira operação do cedente.
+- `limite_global`: Limite global de crédito do cedente.
+- `limite_boleto_especial`, `limite_comissaria`, `limite_tranche`, `limite_boleto_especial_tranche`, `limite_boleto_garantido`, `limite_operacao_clean`: Diferentes tipos de limites de crédito.
+- `risco_atual`: Classificação de risco atual do cedente.
+- `saldo`: Saldo atual do cedente.
+- `id_cedente`: Identificador único do cedente.
+
 ### Regras e Semântica
 
 - Sempre que for solicitada a **"soma dos valores da operação"**, use o campo `valor_bruto` da tabela `fato_operacoes`.
@@ -536,9 +616,11 @@ Contém títulos financeiros em aberto. As colunas são:
 - 'descrever tabela <nome>' para descrever a estrutura de uma tabela
 - 'operacoes [limite]' para listar operações da tabela fato_operacoes
 - 'titulos [limite]' para listar títulos em aberto da tabela fato_titulosabertos
+- 'cedentes [limite]' para listar informações cadastrais dos cedentes
 - 'contar operacoes' para contar o total de registros na tabela fato_operacoes
 - 'contar titulos' para contar o total de títulos em aberto
 - 'contar registros titulos' para contar o total de registros na tabela fato_titulosabertos
+- 'contar cedentes' para contar o total de registros na tabela dimcedentesconsolidado
 
 Responda sempre em português, de forma clara e objetiva, como um especialista em operações financeiras. Forneça insights contextualizados e relevantes para o usuário."""
 
